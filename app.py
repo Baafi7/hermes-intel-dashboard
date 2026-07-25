@@ -84,7 +84,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.set_page_config(page_title="Hermes Intel", page_icon="🎯", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Hermes Intel", page_icon="🎯", layout="wide", initial_sidebar_state="collapsed")
 
 
 # ============ DATA LOADING - CLOUD COMPATIBLE ============
@@ -513,7 +513,7 @@ idx_names = {
     "^RUT": ("RUT", "📋"), "^VIX": ("VIX", "⚡"), "GC=F": ("GOLD", "🥇"),
     "CL=F": ("OIL", "🛢️"), "BTC-USD": ("BTC", "₿"), "^TNX": ("10Y", "📊"),
 }
-idx_html = '<div style="display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 6px; margin-top: 12px;">'
+idx_html = '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 6px; margin-top: 12px;">'
 for sym, (short, icon) in idx_names.items():
     if sym in data["indices"]:
         price, chg = data["indices"][sym]
