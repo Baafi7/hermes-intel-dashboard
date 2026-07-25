@@ -200,15 +200,19 @@ def load_data():
             except Exception:
                 continue
 
-        # Sector performance
+        # Sector performance - only count tickers with valid chg data
         sector_perf = {}
         for r in results:
             s = r["sector"]
             if s not in sector_perf:
-                sector_perf[s] = {"total": 0, "count": 0}
-            sector_perf[s]["total"] += r["chg"]
-            sector_perf[s]["count"] += 1
-        sector_perf = {k: {"chg": v["total"] / v["count"], "count": v["count"]} for k, v in sector_perf.items()}
+                sector_perf[s] = {"total": 0.0, "count": 0}
+            if r.get("chg") is not None and not (r["chg"] != r["chg"]):  # filter NaN
+                sector_perf[s]["total"] += r["chg"]
+                sector_perf[s]["count"] += 1
+        sector_perf = {}
+        for k, v in sector_perf.items():
+            if v["count"] > 0:
+                sector_perf[k] = {"chg": v["total"] / v["count"], "count": v["count"]}
 
         # Major indices
         indices = {}
