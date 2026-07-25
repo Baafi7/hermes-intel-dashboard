@@ -5,9 +5,16 @@ Uses only yfinance + RSS (no local scripts required)
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from datetime import datetime
-from pathlib import Path
+from datetime import datetime, timezone
 import sys
+
+# Convert UTC to Eastern Time
+try:
+    from zoneinfo import ZoneInfo
+    ET = ZoneInfo("America/New_York")
+except ImportError:
+    # Fallback for older Python
+    ET = timezone.utc
 
 # ============ STYLES ============
 st.markdown("""
@@ -284,10 +291,10 @@ def load_data():
             "quote_author": quote_author,
             "watchlist_news": watchlist_news,
             "macro_news": macro_news,
-            "timestamp": datetime.now().strftime("%I:%M %p ET"),
-            "date_full": datetime.now().strftime("%A, %B %d, %Y"),
-            "day_short": datetime.now().strftime("%A").upper(),
-            "date_short": datetime.now().strftime("%B %d, %Y"),
+            "timestamp": datetime.now(ET).strftime("%I:%M %p ET"),
+            "date_full": datetime.now(ET).strftime("%A, %B %d, %Y"),
+            "day_short": datetime.now(ET).strftime("%A").upper(),
+            "date_short": datetime.now(ET).strftime("%B %d, %Y"),
         }
     except Exception as e:
         st.error(f"Data error: {e}")
