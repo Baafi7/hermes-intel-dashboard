@@ -487,6 +487,69 @@ with r3c2:
     st.markdown(news_html, unsafe_allow_html=True)
 
 
+# ============ ROW 3.5: WATCHLIST HEATMAP ============
+st.markdown('<div class="card"><div class="card-title card-title-red">🔥 WATCHLIST HEATMAP</div><div style="font-size: 10px; color: #6a7a8a; margin-bottom: 10px;">All 41 watchlist tickers · color = % change · size = momentum intensity</div>', unsafe_allow_html=True)
+
+# Build heatmap grid - 9 columns on desktop, responsive on mobile
+heatmap_html = '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(85px, 1fr)); gap: 4px;">'
+valid_watchlist = [r for r in data["watchlist"] if r.get("chg") is not None and r["chg"] == r["chg"]]
+# Sort by change (worst to best for visual)
+valid_watchlist.sort(key=lambda x: x["chg"])
+
+for r in valid_watchlist:
+    chg = r["chg"]
+    # Color intensity based on magnitude
+    if chg >= 3:
+        bg = "rgba(0, 255, 136, 0.35)"
+        fg = "#00ff88"
+        border = "#00ff88"
+    elif chg >= 1.5:
+        bg = "rgba(0, 200, 100, 0.25)"
+        fg = "#00dd77"
+        border = "#00cc66"
+    elif chg >= 0.5:
+        bg = "rgba(0, 170, 80, 0.15)"
+        fg = "#88dd99"
+        border = "#0a8044"
+    elif chg > -0.5:
+        bg = "rgba(85, 85, 85, 0.15)"
+        fg = "#cccccc"
+        border = "#444"
+    elif chg > -1.5:
+        bg = "rgba(170, 70, 70, 0.15)"
+        fg = "#dd8888"
+        border = "#803333"
+    elif chg > -3:
+        bg = "rgba(200, 60, 60, 0.25)"
+        fg = "#ff6666"
+        border = "#cc3333"
+    else:
+        bg = "rgba(255, 50, 50, 0.35)"
+        fg = "#ff4444"
+        border = "#ff4444"
+
+    chg_str = f"{chg:+.1f}"
+    # Size based on volatility (more volatile = larger)
+    abs_chg = abs(chg)
+    if abs_chg >= 3:
+        padding = "10px 4px"
+        ticker_size = "13px"
+        chg_size = "14px"
+    elif abs_chg >= 1.5:
+        padding = "8px 4px"
+        ticker_size = "12px"
+        chg_size = "13px"
+    else:
+        padding = "6px 4px"
+        ticker_size = "11px"
+        chg_size = "11px"
+
+    heatmap_html += f'<div style="background: {bg}; border: 1px solid {border}; border-radius: 4px; padding: {padding}; text-align: center;"><div style="color: #fff; font-weight: bold; font-size: {ticker_size};" title="{r["ticker"]} - {r["sector"]}">{r["ticker"]}</div><div style="color: {fg}; font-size: {chg_size}; font-weight: bold; margin-top: 2px;">{chg_str}%</div></div>'
+
+heatmap_html += '</div></div>'
+st.markdown(heatmap_html, unsafe_allow_html=True)
+
+
 # ============ ROW 4: PORTFOLIO ============
 positions = [
     ("NVDA", "NVIDIA Corp.", 15, 213.82, 204.79, 3071.85, -90.45, -135.45),
