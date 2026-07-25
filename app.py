@@ -231,17 +231,20 @@ def load_data():
             if v["count"] > 0:
                 sector_perf[k] = {"chg": v["total"] / v["count"], "count": v["count"]}
 
-        # Major indices
+        # Major indices - filter NaN values
         indices = {}
         for sym in ["^DJI", "^IXIC", "^GSPC", "^RUT", "^VIX", "GC=F", "CL=F", "BTC-USD", "^TNX"]:
             try:
                 tk = yf.Ticker(sym)
                 df = tk.history(period="5d", auto_adjust=True)
-                if not df.empty and len(df) >= 2:
-                    price = float(df['Close'].iloc[-1])
-                    prev = float(df['Close'].iloc[-2])
-                    indices[sym] = (price, (price/prev - 1) * 100)
-            except:
+                if df is not None and not df.empty and len(df) >= 2:
+                    closes = df['Close'].dropna()
+                    if len(closes) >= 2:
+                        price = float(closes.iloc[-1])
+                        prev = float(closes.iloc[-2])
+                        if price == price and prev == prev and prev != 0:  # filter NaN, div by zero
+                            indices[sym] = (price, (price/prev - 1) * 100)
+            except Exception:
                 pass
 
         # Weather
