@@ -61,16 +61,16 @@ st.markdown("""
     .big-number-down { color: #ff4444; }
     .big-number-up { color: #00ff88; }
 
-    .data-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; }
     .data-table th {
         background: #0a0e17; color: #6a7a8a; font-size: 9px;
         text-transform: uppercase; letter-spacing: 1px;
-        padding: 5px 6px; text-align: left; border-bottom: 1px solid #2a3f5f;
-        font-weight: bold;
+        padding: 5px 4px; text-align: left; border-bottom: 1px solid #2a3f5f;
+        font-weight: bold; word-wrap: break-word;
     }
     .data-table td {
-        padding: 5px 6px; border-bottom: 1px solid #1a2332;
-        color: #d0d8e0;
+        padding: 5px 4px; border-bottom: 1px solid #1a2332;
+        color: #d0d8e0; word-wrap: break-word; vertical-align: middle;
     }
     .data-table tr:hover { background: #1a2332; }
     .up { color: #00ff88; }
@@ -513,13 +513,13 @@ idx_names = {
     "^RUT": ("RUT", "📋"), "^VIX": ("VIX", "⚡"), "GC=F": ("GOLD", "🥇"),
     "CL=F": ("OIL", "🛢️"), "BTC-USD": ("BTC", "₿"), "^TNX": ("10Y", "📊"),
 }
-idx_html = '<div style="display: grid; grid-template-columns: repeat(9, 1fr); gap: 6px; margin-top: 12px;">'
+idx_html = '<div style="display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 6px; margin-top: 12px;">'
 for sym, (short, icon) in idx_names.items():
     if sym in data["indices"]:
         price, chg = data["indices"][sym]
         chg_color = "up" if chg >= 0 else "down"
         price_str = f"{price:,.2f}" if price < 1000 else f"{price:,.0f}"
-        idx_html += f'<div style="background: #0f1721; border: 1px solid #2a3f5f; border-radius: 6px; padding: 8px 4px; text-align: center;"><div style="color: #6a7a8a; font-size: 9px;">{icon} {short}</div><div style="color: #fff; font-size: 13px; font-weight: bold; margin: 3px 0;">{price_str}</div><div style="font-size: 10px;" class="{chg_color}">{chg:+.2f}%</div></div>'
+        idx_html += f'<div style="background: #0f1721; border: 1px solid #2a3f5f; border-radius: 6px; padding: 8px 4px; text-align: center; min-width: 0; overflow: hidden;"><div style="color: #6a7a8a; font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{icon} {short}</div><div style="color: #fff; font-size: 13px; font-weight: bold; margin: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{price_str}</div><div style="font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" class="{chg_color}">{chg:+.2f}%</div></div>'
 idx_html += '</div>'
 st.markdown(idx_html, unsafe_allow_html=True)
 
