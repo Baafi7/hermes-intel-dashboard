@@ -105,67 +105,75 @@ def load_data():
         ]
         watchlist = list(dict.fromkeys(watchlist))
 
+        # Per-ticker data with full error handling
         results = []
         for t in watchlist:
             try:
                 tk = yf.Ticker(t)
                 df = tk.history(period="1mo", auto_adjust=True)
-                if df.empty or len(df) < 2:
+                if df is None or df.empty or len(df) < 2:
                     continue
                 closes = df["Close"]
+                if closes is None or len(closes) < 2:
+                    continue
                 volumes = df["Volume"]
                 price = float(closes.iloc[-1])
                 prev = float(closes.iloc[-2])
                 chg = (price / prev - 1) * 100
 
-                # SMA
-                ma20 = float(closes.rolling(20).mean().iloc[-1])
-                ma50 = float(closes.rolling(50).mean().iloc[-1])
+                # SMA - safe calculation
+                ma20 = float(closes.rolling(min(20, len(closes))).mean().iloc[-1]) if len(closes) >= 5 else price
+                ma50 = float(closes.rolling(min(50, len(closes))).mean().iloc[-1]) if len(closes) >= 10 else None
                 ma200 = float(closes.rolling(min(200, len(closes))).mean().iloc[-1]) if len(closes) >= 50 else None
 
-                # RSI
-                delta = closes.diff()
-                gain = delta.clip(lower=0)
-                loss = -delta.clip(upper=0)
-                avg_gain = gain.ewm(alpha=1/14, min_periods=14, adjust=False).mean()
-                avg_loss = loss.ewm(alpha=1/14, min_periods=14, adjust=False).mean()
-                rs = avg_gain / avg_loss.replace(0, 1e-10)
-                rsi = float((100 - (100 / (1 + rs))).iloc[-1])
+                # RSI - safe calculation
+                try:
+                    delta = closes.diff()
+                    gain = delta.clip(lower=0)
+                    loss = -delta.clip(upper=0)
+                    avg_gain = gain.ewm(alpha=1/14, min_periods=min(14, len(gain)), adjust=False).mean()
+                    avg_loss = loss.ewm(alpha=1/14, min_periods=min(14, len(loss)), adjust=False).mean()
+                    rs = avg_gain / avg_loss.replace(0, 1e-10)
+                    rsi = float((100 - (100 / (1 + rs))).iloc[-1])
+                    rsi = max(0, min(100, rsi))  # Clamp to 0-100
+                except Exception:
+                    rsi = 50
 
                 # MACD
-                ema12 = closes.ewm(span=12, adjust=False).mean()
-                ema26 = closes.ewm(span=26, adjust=False).mean()
-                macd = ema12 - ema26
-                sig = macd.ewm(span=9, adjust=False).mean()
-                hist = float((macd - sig).iloc[-1])
-                hist_yest = float((macd - sig).iloc[-2])
+                try:
+                    ema12 = closes.ewm(span=12, adjust=False).mean()
+                    ema26 = closes.ewm(span=26, adjust=False).mean()
+                    macd = ema12 - ema26
+                    sig = macd.ewm(span=9, adjust=False).mean()
+                    hist = float((macd - sig).iloc[-1])
+                    hist_yest = float((macd - sig).iloc[-2]) if len(macd) >= 2 else hist
+                except Exception:
+                    hist = 0
+                    hist_yest = 0
 
                 # Volume
-                vol_ratio = float(volumes.iloc[-1] / volumes.tail(20).mean()) if volumes.tail(20).mean() > 0 else 1
+                try:
+                    vol_ratio = float(volumes.iloc[-1] / volumes.tail(min(20, len(volumes))).mean()) if len(volumes) >= 5 else 1
+                except Exception:
+                    vol_ratio = 1
 
-                # Simple MPS calculation (regime-independent for simplicity)
+                # Simple MPS calculation
                 mps_base = 50
-                # RSI component
                 if 40 <= rsi <= 65:
                     mps_base += 8
                 elif rsi < 30 or rsi > 75:
                     mps_base += 5
-                # Trend component
-                if ma50 and ma200 and price > ma50 > ma200:
+                if ma50 is not None and ma200 is not None and price > ma50 > ma200:
                     mps_base += 12
-                elif ma50 and price > ma50:
+                elif ma50 is not None and price > ma50:
                     mps_base += 6
-                # MACD component
                 if hist > 0 and hist > hist_yest:
                     mps_base += 6
-                # Volume
                 if vol_ratio > 1.2:
                     mps_base += 4
 
-                # Sparkline data
-                sparkline = closes.tail(20).tolist()
+                sparkline = closes.tail(min(20, len(closes))).tolist()
 
-                # Sector mapping
                 sector_map = {
                     "NVDA": "Tech", "AAPL": "Tech", "MSFT": "Tech", "AVGO": "Tech", "AMD": "Tech", "ASML": "Tech",
                     "QCOM": "Tech", "AMAT": "Tech", "MRVL": "Tech", "MU": "Tech", "INTC": "Tech", "VRT": "Tech",
@@ -187,7 +195,7 @@ def load_data():
                     "vol_ratio": vol_ratio, "mps": min(100, max(0, mps_base)),
                     "sparkline": sparkline,
                     "sector": sector_map.get(t, "Other"),
-                    "above_200": ma200 and price > ma200,
+                    "above_200": ma200 is not None and price > ma200,
                 })
             except Exception:
                 continue
