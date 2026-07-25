@@ -106,99 +106,109 @@ def load_data():
         watchlist = list(dict.fromkeys(watchlist))
 
         # Per-ticker data with full error handling
+        # Use batch download for speed (single API call for all tickers)
+        try:
+            tickers_str = " ".join(watchlist)
+            data = yf.download(tickers_str, period="1mo", group_by="ticker", auto_adjust=True, progress=False, threads=True)
+        except Exception:
+            data = None
+
         results = []
-        for t in watchlist:
-            try:
-                tk = yf.Ticker(t)
-                df = tk.history(period="1mo", auto_adjust=True)
-                if df is None or df.empty or len(df) < 2:
+        if data is not None and not data.empty:
+            for t in watchlist:
+                try:
+                    # Extract this ticker's data
+                    if len(watchlist) > 1 and t in data.columns.get_level_values(0):
+                        closes = data[t]["Close"].dropna()
+                        volumes = data[t]["Volume"].dropna()
+                    else:
+                        closes = data["Close"].dropna()
+                        volumes = data["Volume"].dropna()
+
+                    if closes is None or len(closes) < 2:
+                        continue
+                    price = float(closes.iloc[-1])
+                    prev = float(closes.iloc[-2])
+                    chg = (price / prev - 1) * 100
+
+                    # SMA - safe
+                    ma20 = float(closes.rolling(min(20, len(closes))).mean().iloc[-1]) if len(closes) >= 5 else price
+                    ma50 = float(closes.rolling(min(50, len(closes))).mean().iloc[-1]) if len(closes) >= 10 else None
+                    ma200 = float(closes.rolling(min(200, len(closes))).mean().iloc[-1]) if len(closes) >= 50 else None
+
+                    # RSI - safe
+                    try:
+                        delta = closes.diff()
+                        gain = delta.clip(lower=0)
+                        loss = -delta.clip(upper=0)
+                        avg_gain = gain.ewm(alpha=1/14, min_periods=min(14, len(gain)), adjust=False).mean()
+                        avg_loss = loss.ewm(alpha=1/14, min_periods=min(14, len(loss)), adjust=False).mean()
+                        rs = avg_gain / avg_loss.replace(0, 1e-10)
+                        rsi = float((100 - (100 / (1 + rs))).iloc[-1])
+                        rsi = max(0, min(100, rsi))
+                    except Exception:
+                        rsi = 50
+
+                    # MACD
+                    try:
+                        ema12 = closes.ewm(span=12, adjust=False).mean()
+                        ema26 = closes.ewm(span=26, adjust=False).mean()
+                        macd = ema12 - ema26
+                        sig = macd.ewm(span=9, adjust=False).mean()
+                        hist = float((macd - sig).iloc[-1])
+                        hist_yest = float((macd - sig).iloc[-2]) if len(macd) >= 2 else hist
+                    except Exception:
+                        hist = 0
+                        hist_yest = 0
+
+                    # Volume
+                    try:
+                        vol_ratio = float(volumes.iloc[-1] / volumes.tail(min(20, len(volumes))).mean()) if len(volumes) >= 5 else 1
+                    except Exception:
+                        vol_ratio = 1
+
+                    # MPS
+                    mps_base = 50
+                    if 40 <= rsi <= 65:
+                        mps_base += 8
+                    elif rsi < 30 or rsi > 75:
+                        mps_base += 5
+                    if ma50 is not None and ma200 is not None and price > ma50 > ma200:
+                        mps_base += 12
+                    elif ma50 is not None and price > ma50:
+                        mps_base += 6
+                    if hist > 0 and hist > hist_yest:
+                        mps_base += 6
+                    if vol_ratio > 1.2:
+                        mps_base += 4
+
+                    sparkline = closes.tail(min(20, len(closes))).tolist()
+
+                    sector_map = {
+                        "NVDA": "Tech", "AAPL": "Tech", "MSFT": "Tech", "AVGO": "Tech", "AMD": "Tech", "ASML": "Tech",
+                        "QCOM": "Tech", "AMAT": "Tech", "MRVL": "Tech", "MU": "Tech", "INTC": "Tech", "VRT": "Tech",
+                        "META": "Comm", "GOOG": "Comm", "NFLX": "Comm",
+                        "AMZN": "Cons Disc", "TSLA": "Cons Disc", "GM": "Cons Disc",
+                        "JPM": "Financials", "MA": "Financials", "V": "Financials", "COIN": "Financials", "UPST": "Financials",
+                        "UNH": "Health", "LLY": "Health", "ISRG": "Health", "ZTS": "Health",
+                        "CAT": "Industrials", "GE": "Industrials", "HPE": "Industrials", "DELL": "Industrials",
+                        "XOM": "Energy", "PLUG": "Energy",
+                        "WCN": "Staples", "COST": "Staples",
+                        "NEE": "Utilities", "LIN": "Materials", "AMT": "Real Estate",
+                        "PLTR": "Other", "STX": "Other", "WDC": "Other",
+                    }
+
+                    results.append({
+                        "ticker": t, "price": price, "chg": chg, "rsi": rsi,
+                        "ma20": ma20, "ma50": ma50, "ma200": ma200,
+                        "macd_hist": hist, "macd_improving": hist > hist_yest,
+                        "vol_ratio": vol_ratio, "mps": min(100, max(0, mps_base)),
+                        "sparkline": sparkline,
+                        "sector": sector_map.get(t, "Other"),
+                        "above_200": ma200 is not None and price > ma200,
+                    })
+                except Exception:
                     continue
-                closes = df["Close"]
-                if closes is None or len(closes) < 2:
-                    continue
-                volumes = df["Volume"]
-                price = float(closes.iloc[-1])
-                prev = float(closes.iloc[-2])
-                chg = (price / prev - 1) * 100
-
-                # SMA - safe calculation
-                ma20 = float(closes.rolling(min(20, len(closes))).mean().iloc[-1]) if len(closes) >= 5 else price
-                ma50 = float(closes.rolling(min(50, len(closes))).mean().iloc[-1]) if len(closes) >= 10 else None
-                ma200 = float(closes.rolling(min(200, len(closes))).mean().iloc[-1]) if len(closes) >= 50 else None
-
-                # RSI - safe calculation
-                try:
-                    delta = closes.diff()
-                    gain = delta.clip(lower=0)
-                    loss = -delta.clip(upper=0)
-                    avg_gain = gain.ewm(alpha=1/14, min_periods=min(14, len(gain)), adjust=False).mean()
-                    avg_loss = loss.ewm(alpha=1/14, min_periods=min(14, len(loss)), adjust=False).mean()
-                    rs = avg_gain / avg_loss.replace(0, 1e-10)
-                    rsi = float((100 - (100 / (1 + rs))).iloc[-1])
-                    rsi = max(0, min(100, rsi))  # Clamp to 0-100
-                except Exception:
-                    rsi = 50
-
-                # MACD
-                try:
-                    ema12 = closes.ewm(span=12, adjust=False).mean()
-                    ema26 = closes.ewm(span=26, adjust=False).mean()
-                    macd = ema12 - ema26
-                    sig = macd.ewm(span=9, adjust=False).mean()
-                    hist = float((macd - sig).iloc[-1])
-                    hist_yest = float((macd - sig).iloc[-2]) if len(macd) >= 2 else hist
-                except Exception:
-                    hist = 0
-                    hist_yest = 0
-
-                # Volume
-                try:
-                    vol_ratio = float(volumes.iloc[-1] / volumes.tail(min(20, len(volumes))).mean()) if len(volumes) >= 5 else 1
-                except Exception:
-                    vol_ratio = 1
-
-                # Simple MPS calculation
-                mps_base = 50
-                if 40 <= rsi <= 65:
-                    mps_base += 8
-                elif rsi < 30 or rsi > 75:
-                    mps_base += 5
-                if ma50 is not None and ma200 is not None and price > ma50 > ma200:
-                    mps_base += 12
-                elif ma50 is not None and price > ma50:
-                    mps_base += 6
-                if hist > 0 and hist > hist_yest:
-                    mps_base += 6
-                if vol_ratio > 1.2:
-                    mps_base += 4
-
-                sparkline = closes.tail(min(20, len(closes))).tolist()
-
-                sector_map = {
-                    "NVDA": "Tech", "AAPL": "Tech", "MSFT": "Tech", "AVGO": "Tech", "AMD": "Tech", "ASML": "Tech",
-                    "QCOM": "Tech", "AMAT": "Tech", "MRVL": "Tech", "MU": "Tech", "INTC": "Tech", "VRT": "Tech",
-                    "META": "Comm", "GOOG": "Comm", "NFLX": "Comm",
-                    "AMZN": "Cons Disc", "TSLA": "Cons Disc", "GM": "Cons Disc",
-                    "JPM": "Financials", "MA": "Financials", "V": "Financials", "COIN": "Financials", "UPST": "Financials",
-                    "UNH": "Health", "LLY": "Health", "ISRG": "Health", "ZTS": "Health",
-                    "CAT": "Industrials", "GE": "Industrials", "HPE": "Industrials", "DELL": "Industrials",
-                    "XOM": "Energy", "PLUG": "Energy",
-                    "WCN": "Staples", "COST": "Staples",
-                    "NEE": "Utilities", "LIN": "Materials", "AMT": "Real Estate",
-                    "PLTR": "Other", "STX": "Other", "WDC": "Other",
-                }
-
-                results.append({
-                    "ticker": t, "price": price, "chg": chg, "rsi": rsi,
-                    "ma20": ma20, "ma50": ma50, "ma200": ma200,
-                    "macd_hist": hist, "macd_improving": hist > hist_yest,
-                    "vol_ratio": vol_ratio, "mps": min(100, max(0, mps_base)),
-                    "sparkline": sparkline,
-                    "sector": sector_map.get(t, "Other"),
-                    "above_200": ma200 is not None and price > ma200,
-                })
-            except Exception:
-                continue
 
         # Sector performance - only count tickers with valid chg data
         sector_perf = {}
