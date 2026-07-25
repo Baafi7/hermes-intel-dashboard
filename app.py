@@ -394,18 +394,28 @@ with r1c2:
 
 with r1c3:
     # Market movers
-    gainers = sorted([r for r in filtered if r["chg"] > 0], key=lambda x: x["chg"], reverse=True)[:5]
-    losers = sorted([r for r in filtered if r["chg"] < 0], key=lambda x: x["chg"])[:5]
+    valid_filtered = [r for r in filtered if r.get("chg") is not None and r["chg"] == r["chg"]]
+    gainers = sorted([r for r in valid_filtered if r["chg"] > 0], key=lambda x: x["chg"], reverse=True)[:5]
+    losers = sorted([r for r in valid_filtered if r["chg"] < 0], key=lambda x: x["chg"])[:5]
 
     movers_html = '<div class="card"><div class="card-title card-title-green">📊 MARKET MOVERS</div><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">'
-    movers_html += '<div><div style="color: #00ff88; font-size: 10px; font-weight: bold; margin-bottom: 4px;">🟢 TOP GAINERS</div><table class="data-table"><tr><th>SYMBOL</th><th style="text-align: right;">CHG</th></tr>'
-    for r in gainers[:5]:
-        movers_html += f'<tr><td><b>{r["ticker"]}</b></td><td style="text-align: right;" class="up">+{r["chg"]:.2f}%</td></tr>'
-    movers_html += '</table></div>'
-    movers_html += '<div><div style="color: #ff4444; font-size: 10px; font-weight: bold; margin-bottom: 4px;">🔴 TOP LOSERS</div><table class="data-table"><tr><th>SYMBOL</th><th style="text-align: right;">CHG</th></tr>'
-    for r in losers[:5]:
-        movers_html += f'<tr><td><b>{r["ticker"]}</b></td><td style="text-align: right;" class="down">{r["chg"]:.2f}%</td></tr>'
-    movers_html += '</table></div></div></div>'
+    if gainers:
+        movers_html += '<div><div style="color: #00ff88; font-size: 10px; font-weight: bold; margin-bottom: 4px;">🟢 TOP GAINERS</div><table class="data-table"><tr><th>SYMBOL</th><th style="text-align: right;">CHG</th></tr>'
+        for r in gainers[:5]:
+            movers_html += f'<tr><td><b>{r["ticker"]}</b></td><td style="text-align: right;" class="up">+{r["chg"]:.2f}%</td></tr>'
+        movers_html += '</table></div>'
+    else:
+        movers_html += '<div><div style="color: #888; font-size: 10px; margin-bottom: 4px;">No gainers</div></div>'
+
+    if losers:
+        movers_html += '<div><div style="color: #ff4444; font-size: 10px; font-weight: bold; margin-bottom: 4px;">🔴 TOP LOSERS</div><table class="data-table"><tr><th>SYMBOL</th><th style="text-align: right;">CHG</th></tr>'
+        for r in losers[:5]:
+            movers_html += f'<tr><td><b>{r["ticker"]}</b></td><td style="text-align: right;" class="down">{r["chg"]:.2f}%</td></tr>'
+        movers_html += '</table></div>'
+    else:
+        movers_html += '<div><div style="color: #888; font-size: 10px; margin-bottom: 4px;">No losers</div></div>'
+
+    movers_html += '</div></div>'
     st.markdown(movers_html, unsafe_allow_html=True)
 
 
