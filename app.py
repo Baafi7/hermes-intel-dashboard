@@ -7,13 +7,34 @@ import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, timezone
 import sys
+import json
+import os
+from pathlib import Path
 
 # Convert UTC to Eastern Time
 try:
     from zoneinfo import ZoneInfo
     ET = ZoneInfo("America/New_York")
 except ImportError:
-    # Fallback for older Python
+    ET = timezone.utc
+
+# ============ TRADE JOURNAL DATA ============
+TRADES_FILE = Path.home() / ".hermes" / "trades.json"
+
+def load_trades():
+    """Load trades from JSON file."""
+    if TRADES_FILE.exists():
+        try:
+            return json.loads(TRADES_FILE.read_text())
+        except Exception:
+            return []
+    return []
+
+
+def save_trades(trades):
+    """Save trades to JSON file."""
+    TRADES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    TRADES_FILE.write_text(json.dumps(trades, indent=2))
     ET = timezone.utc
 
 # ============ STYLES ============
@@ -585,6 +606,227 @@ for sym, (short, icon) in idx_names.items():
         idx_html += f'<div style="background: #0f1721; border: 1px solid #2a3f5f; border-radius: 6px; padding: 8px 4px; text-align: center; min-width: 0; overflow: hidden;"><div style="color: #6a7a8a; font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{icon} {short}</div><div style="color: #fff; font-size: 13px; font-weight: bold; margin: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{price_str}</div><div style="font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" class="{chg_color}">{chg:+.2f}%</div></div>'
 idx_html += '</div>'
 st.markdown(idx_html, unsafe_allow_html=True)
+
+
+# ============ TRADE JOURNAL ============
+st.markdown('<div class="card"><div class="card-title card-title-green">📊 TRADE JOURNAL <span class="live-badge">● TRACKING</span></div>', unsafe_allow_html=True)
+
+trades = load_trades()
+tab_entry, tab_open, tab_history, tab_stats = st.tabs(["➕ NEW TRADE", "📂 OPEN POSITIONS", "📜 HISTORY", "📈 STATS"])
+
+with tab_entry:
+    st.markdown('<div style="font-size: 11px; color: #6a7a8a; margin-bottom: 12px;">Log a new trade. Mark as "Open" to track, or add exit price to close it.</div>', unsafe_allow_html=True)
+
+    e1, e2, e3 = st.columns(3)
+    with e1:
+        new_ticker = st.text_input("Ticker", key="new_ticker", placeholder="e.g. NVDA").upper()
+        new_direction = st.selectbox("Direction", ["LONG", "SHORT"], key="new_direction")
+        new_strategy = st.selectbox("Strategy", [
+            "LONG_PUT", "LONG_CALL", "LONG_STRADDLE", "PUT_SPREAD",
+            "CALL_SPREAD", "IRON_CONDOR", "STOCK_LONG", "STOCK_SHORT",
+            "SWING_TRADE", "OTHER"
+        ], key="new_strategy")
+    with e2:
+        new_entry = st.number_input("Entry Price", min_value=0.0, step=0.01, key="new_entry", format="%.2f")
+        new_shares = st.number_input("Contracts/Shares", min_value=1, step=1, key="new_shares", value=1)
+        new_date = st.date_input("Entry Date", key="new_date", value=datetime.now(ET).date())
+    with e3:
+        new_exit = st.number_input("Exit Price (leave 0 if open)", min_value=0.0, step=0.01, key="new_exit", format="%.2f", value=0.0)
+        new_target = st.number_input("Target Price", min_value=0.0, step=0.01, key="new_target", format="%.2f", value=0.0)
+        new_stop = st.number_input("Stop Price", min_value=0.0, step=0.01, key="new_stop", format="%.2f", value=0.0)
+
+    new_notes = st.text_input("Notes (regime, setup, catalyst)", key="new_notes", placeholder="e.g. RSI divergence + oil spike regime")
+
+    e4, e5 = st.columns([1, 4])
+    with e4:
+        if st.button("💾 SAVE TRADE", use_container_width=True):
+            if not new_ticker or new_entry <= 0:
+                st.error("Ticker and entry price required")
+            else:
+                new_trade = {
+                    "id": datetime.now().strftime("%Y%m%d%H%M%S"),
+                    "ticker": new_ticker,
+                    "direction": new_direction,
+                    "strategy": new_strategy,
+                    "entry": new_entry,
+                    "exit": new_exit if new_exit > 0 else None,
+                    "shares": new_shares,
+                    "target": new_target if new_target > 0 else None,
+                    "stop": new_stop if new_stop > 0 else None,
+                    "open_date": str(new_date),
+                    "close_date": str(datetime.now(ET).date()) if new_exit > 0 else None,
+                    "notes": new_notes or "",
+                }
+                trades.append(new_trade)
+                save_trades(trades)
+                st.success(f"✅ Saved {new_ticker} {new_strategy}")
+                st.rerun()
+
+    with e5:
+        if st.button("📋 LOAD SAMPLE TRADES (for testing)"):
+            sample_trades = [
+                {"id": "1001", "ticker": "NVDA", "direction": "LONG", "strategy": "SWING_TRADE", "entry": 178.50, "exit": 192.30, "shares": 15, "target": 200.0, "stop": 170.0, "open_date": "2026-06-15", "close_date": "2026-07-08", "notes": "AI capex theme"},
+                {"id": "1002", "ticker": "XOM", "direction": "LONG", "strategy": "STOCK_LONG", "entry": 142.00, "exit": 156.89, "shares": 10, "target": 165.0, "stop": 138.0, "open_date": "2026-06-20", "close_date": "2026-07-22", "notes": "Iran oil beneficiary"},
+                {"id": "1003", "ticker": "INTC", "direction": "LONG", "strategy": "LONG_PUT", "entry": 7.10, "exit": 0.50, "shares": 1, "target": 14.0, "stop": 3.50, "open_date": "2026-07-10", "close_date": "2026-07-15", "notes": "IV crush - theta decayed"},
+                {"id": "1004", "ticker": "AMAT", "direction": "LONG", "strategy": "PUT_SPREAD", "entry": 4.20, "exit": 9.80, "shares": 1, "target": 12.0, "stop": 0.0, "open_date": "2026-07-08", "close_date": "2026-07-18", "notes": "Credit spread - direction wrong but premium saved it"},
+                {"id": "1005", "ticker": "TSLA", "direction": "SHORT", "strategy": "LONG_PUT", "entry": 8.40, "exit": 22.10, "shares": 1, "target": 0.0, "stop": 0.0, "open_date": "2026-07-15", "close_date": "2026-07-23", "notes": "Earnings miss - put exploded"},
+                {"id": "1006", "ticker": "COIN", "direction": "LONG", "strategy": "LONG_STRADDLE", "entry": 18.50, "exit": 4.20, "shares": 1, "target": 30.0, "stop": 5.0, "open_date": "2026-07-18", "close_date": "2026-07-22", "notes": "IV crushed - no big move"},
+                {"id": "1007", "ticker": "META", "direction": "LONG", "strategy": "SWING_TRADE", "entry": 510.00, "exit": 495.00, "shares": 10, "target": 550.0, "stop": 495.0, "open_date": "2026-07-08", "close_date": "2026-07-15", "notes": "Stopped out - strategy diffusion"},
+                {"id": "1008", "ticker": "AVGO", "direction": "LONG", "strategy": "LONG_PUT", "entry": 4.55, "exit": 0.08, "shares": 1, "target": 0.0, "stop": 0.0, "open_date": "2026-06-25", "close_date": "2026-07-10", "notes": "Expired worthless - $64 ITM cushion"},
+                {"id": "1009", "ticker": "INTC", "direction": "LONG", "strategy": "STOCK_LONG", "entry": 95.00, "exit": None, "shares": 5, "target": 110.0, "stop": 88.0, "open_date": "2026-07-22", "close_date": None, "notes": "Bounce candidate - awaiting confirmation"},
+                {"id": "1010", "ticker": "WDC", "direction": "LONG", "strategy": "PUT_SPREAD", "entry": 6.50, "exit": None, "shares": 1, "target": 15.0, "stop": 0.0, "open_date": "2026-07-23", "close_date": None, "notes": "BULL_BIAS signal - fat premium"},
+            ]
+            save_trades(sample_trades)
+            st.success("✅ Loaded 10 sample trades")
+            st.rerun()
+
+with tab_open:
+    open_trades = [t for t in trades if t.get("exit") is None]
+    if not open_trades:
+        st.markdown('<div style="text-align: center; color: #888; padding: 20px;">No open positions. Add a trade in the NEW TRADE tab.</div>', unsafe_allow_html=True)
+    else:
+        open_html = '<table class="data-table"><tr><th>TICKER</th><th>STRATEGY</th><th>ENTRY</th><th>SHARES</th><th>TARGET</th><th>STOP</th><th>OPENED</th><th>NOTES</th></tr>'
+        for t in open_trades:
+            open_html += f'<tr><td><b>{t["ticker"]}</b></td><td style="font-size: 9px;">{t["strategy"]}</td><td>${t["entry"]:.2f}</td><td>{t["shares"]}</td><td>${t.get("target", 0):.2f}</td><td>${t.get("stop", 0):.2f}</td><td style="font-size: 10px;">{t.get("open_date", "")}</td><td style="font-size: 10px; color: #888;">{t.get("notes", "")[:30]}</td></tr>'
+        open_html += '</table>'
+        st.markdown(open_html, unsafe_allow_html=True)
+
+        st.markdown('<div style="margin-top: 16px; padding: 12px; background: #0f1721; border-radius: 6px;"><div style="color: #d4af37; font-weight: bold; margin-bottom: 8px;">CLOSE A TRADE</div>', unsafe_allow_html=True)
+        c1, c2, c3 = st.columns([2, 2, 1])
+        with c1:
+            close_ticker = st.selectbox("Position to close", [t["ticker"] + " (" + t["strategy"] + ")" for t in open_trades], key="close_ticker")
+        with c2:
+            close_price = st.number_input("Exit Price", min_value=0.0, step=0.01, key="close_price", format="%.2f")
+        with c3:
+            st.markdown('<div style="margin-top: 24px;"></div>', unsafe_allow_html=True)
+            if st.button("CLOSE", use_container_width=True):
+                for t in trades:
+                    if t.get("exit") is None and (t["ticker"] + " (" + t["strategy"] + ")") == close_ticker:
+                        t["exit"] = close_price
+                        t["close_date"] = str(datetime.now(ET).date())
+                        save_trades(trades)
+                        st.success(f"✅ Closed {t['ticker']} at ${close_price}")
+                        st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+with tab_history:
+    closed_trades = [t for t in trades if t.get("exit") is not None]
+    if not closed_trades:
+        st.markdown('<div style="text-align: center; color: #888; padding: 20px;">No closed trades yet.</div>', unsafe_allow_html=True)
+    else:
+        history_html = '<table class="data-table"><tr><th>DATE</th><th>TICKER</th><th>STRATEGY</th><th>ENTRY</th><th>EXIT</th><th>SHARES</th><th style="text-align: right;">P&L</th><th style="text-align: right;">%</th><th>NOTES</th></tr>'
+        for t in closed_trades:
+            entry = t["entry"]
+            exit_p = t["exit"]
+            shares = t["shares"]
+            if t["strategy"] in ["STOCK_LONG", "STOCK_SHORT", "SWING_TRADE"]:
+                pnl = (exit_p - entry) * shares if t["direction"] == "LONG" else (entry - exit_p) * shares
+                pct = (exit_p / entry - 1) * 100 if t["direction"] == "LONG" else (entry / exit_p - 1) * 100
+            else:
+                pnl = (exit_p - entry) * shares * 100
+                pct = (exit_p / entry - 1) * 100 if entry > 0 else 0
+
+            pnl_color = "up" if pnl > 0 else "down" if pnl < 0 else "neutral"
+            pnl_str = f"{pnl:+,.0f}" if abs(pnl) >= 100 else f"{pnl:+,.2f}"
+            history_html += f'<tr><td style="font-size: 10px;">{t.get("close_date", "")[:10]}</td><td><b>{t["ticker"]}</b></td><td style="font-size: 9px;">{t["strategy"]}</td><td>${entry:.2f}</td><td>${exit_p:.2f}</td><td>{shares}</td><td style="text-align: right;" class="{pnl_color}">{pnl_str}</td><td style="text-align: right;" class="{pnl_color}">{pct:+.1f}%</td><td style="font-size: 9px; color: #888;">{t.get("notes", "")[:30]}</td></tr>'
+        history_html += '</table>'
+        st.markdown(history_html, unsafe_allow_html=True)
+
+        st.markdown('<div style="margin-top: 16px; padding: 12px; background: #0f1721; border-radius: 6px;"><div style="color: #ff8c42; font-weight: bold; margin-bottom: 8px;">DELETE A TRADE</div>', unsafe_allow_html=True)
+        d1, d2 = st.columns([3, 1])
+        with d1:
+            del_choice = st.selectbox("Trade to delete", [f'{t["ticker"]} {t["strategy"]} - {t.get("close_date", t.get("open_date", ""))[:10]}' for t in closed_trades], key="del_choice")
+        with d2:
+            if st.button("🗑️ DELETE", use_container_width=True):
+                for t in trades:
+                    if f'{t["ticker"]} {t["strategy"]} - {t.get("close_date", t.get("open_date", ""))[:10]}' == del_choice:
+                        trades.remove(t)
+                        save_trades(trades)
+                        st.success("✅ Deleted")
+                        st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+with tab_stats:
+    closed_trades = [t for t in trades if t.get("exit") is not None]
+    if not closed_trades:
+        st.markdown('<div style="text-align: center; color: #888; padding: 20px;">Close some trades to see stats.</div>', unsafe_allow_html=True)
+    else:
+        wins = []
+        losses = []
+        total_pnl = 0
+        for t in closed_trades:
+            entry = t["entry"]
+            exit_p = t["exit"]
+            shares = t["shares"]
+            if t["strategy"] in ["STOCK_LONG", "STOCK_SHORT", "SWING_TRADE"]:
+                pnl = (exit_p - entry) * shares if t["direction"] == "LONG" else (entry - exit_p) * shares
+            else:
+                pnl = (exit_p - entry) * shares * 100
+
+            total_pnl += pnl
+            if pnl > 0:
+                wins.append(pnl)
+            elif pnl < 0:
+                losses.append(pnl)
+
+        total = len(closed_trades)
+        win_count = len(wins)
+        loss_count = len(losses)
+        win_rate = (win_count / total * 100) if total > 0 else 0
+        avg_win = sum(wins) / win_count if win_count else 0
+        avg_loss = sum(losses) / loss_count if loss_count else 0
+        profit_factor = abs(sum(wins) / sum(losses)) if sum(losses) < 0 else float('inf')
+        best_trade = max(wins) if wins else 0
+        worst_trade = min(losses) if losses else 0
+
+        stats_html = '<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px;">'
+        stats = [
+            ("🎯 WIN RATE", f"{win_rate:.0f}%", "#00ff88" if win_rate >= 50 else "#ff4444"),
+            ("TOTAL P&L", f"${total_pnl:+,.0f}", "#00ff88" if total_pnl > 0 else "#ff4444"),
+            ("WINS", f"{win_count}", "#00ff88"),
+            ("LOSSES", f"{loss_count}", "#ff4444"),
+            ("AVG WIN", f"${avg_win:,.0f}", "#00ff88"),
+            ("AVG LOSS", f"${avg_loss:,.0f}", "#ff4444"),
+            ("BEST TRADE", f"${best_trade:,.0f}", "#00ff88"),
+            ("WORST TRADE", f"${worst_trade:,.0f}", "#ff4444"),
+            ("PROFIT FACTOR", f"{profit_factor:.2f}" if profit_factor != float('inf') else "∞", "#00ff88" if profit_factor > 1 else "#ff4444"),
+            ("TOTAL TRADES", f"{total}", "#4da6ff"),
+        ]
+        for label, value, color in stats:
+            stats_html += f'<div style="background: #0a0e17; border: 1px solid #2a3f5f; border-radius: 6px; padding: 10px; text-align: center;"><div style="color: #6a7a8a; font-size: 9px; margin-bottom: 4px;">{label}</div><div style="color: {color}; font-size: 18px; font-weight: bold;">{value}</div></div>'
+        stats_html += '</div>'
+        st.markdown(stats_html, unsafe_allow_html=True)
+
+        st.markdown('<div style="margin-top: 16px;"><div style="color: #d4af37; font-weight: bold; margin-bottom: 8px;">📊 PERFORMANCE BY STRATEGY</div>', unsafe_allow_html=True)
+        strategy_stats = {}
+        for t in closed_trades:
+            strat = t["strategy"]
+            if strat not in strategy_stats:
+                strategy_stats[strat] = {"wins": 0, "losses": 0, "pnl": 0, "count": 0}
+            entry = t["entry"]
+            exit_p = t["exit"]
+            shares = t["shares"]
+            if t["strategy"] in ["STOCK_LONG", "STOCK_SHORT", "SWING_TRADE"]:
+                pnl = (exit_p - entry) * shares if t["direction"] == "LONG" else (entry - exit_p) * shares
+            else:
+                pnl = (exit_p - entry) * shares * 100
+
+            strategy_stats[strat]["pnl"] += pnl
+            strategy_stats[strat]["count"] += 1
+            if pnl > 0:
+                strategy_stats[strat]["wins"] += 1
+            else:
+                strategy_stats[strat]["losses"] += 1
+
+        strat_html = '<table class="data-table"><tr><th>STRATEGY</th><th>TRADES</th><th>WINS</th><th>LOSSES</th><th>WIN RATE</th><th>TOTAL P&L</th></tr>'
+        for strat, s in sorted(strategy_stats.items(), key=lambda x: x[1]["pnl"], reverse=True):
+            wr = (s["wins"] / s["count"] * 100) if s["count"] > 0 else 0
+            pnl_color = "up" if s["pnl"] > 0 else "down"
+            strat_html += f'<tr><td><b>{strat}</b></td><td>{s["count"]}</td><td class="up">{s["wins"]}</td><td class="down">{s["losses"]}</td><td>{wr:.0f}%</td><td class="{pnl_color}">${s["pnl"]:+,.0f}</td></tr>'
+        strat_html += '</table></div>'
+        st.markdown(strat_html, unsafe_allow_html=True)
+
+st.markdown('</div>', unsafe_allow_html=True)
 
 
 # Footer
