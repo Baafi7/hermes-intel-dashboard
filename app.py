@@ -129,6 +129,7 @@ def load_data():
             "NEE",
             "LIN",
             "AMT",
+            "EQIX", "GDS",
             "PLTR", "HPE", "DELL", "STX", "WDC", "GM", "UPST",
         ]
         watchlist = list(dict.fromkeys(watchlist))
@@ -224,6 +225,7 @@ def load_data():
                         "WCN": "Staples", "COST": "Staples",
                         "NEE": "Utilities", "LIN": "Materials", "AMT": "Real Estate",
                         "PLTR": "Other", "STX": "Other", "WDC": "Other",
+                        "EQIX": "Real Estate", "GDS": "Real Estate",
                     }
 
                     results.append({
